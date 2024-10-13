@@ -10,17 +10,19 @@ from src.word_timestamp import transcribe_audio
 from src.get_video_clips import extract_frames, extract_videos
 from src.lip_sync import get_lip_sync
 from src.voice_cloning import get_cloned_voice
+import os
+import subprocess
 from moviepy.editor import VideoFileClip, concatenate_videoclips
 
 
 app = FastAPI()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=["*"],
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
 
 # Define the directory to store the uploaded videos
 UPLOAD_DIR = Path("uploaded_videos")
@@ -43,9 +45,37 @@ def time_str_to_seconds(time_str):
     hours, minutes, seconds = map(float, time_str.split(':'))
     return hours * 3600 + minutes * 60 + seconds
 
+
+def concat_all_vids(video_directory):
+    video_files = ['videos_output/' + f for f in os.listdir(video_directory) if f.endswith('.mp4')]
+
+    video_files.sort()  # Sorts alphabetically, adjust as needed
+
+    # Create the text file for FFmpeg
+    with open('videos.txt', 'w') as file:
+        for video in video_files:
+            file.write(f"file '{video}'\n")
+
+    # Construct the FFmpeg command
+    ffmpeg_command = [
+        'ffmpeg',
+        '-f', 'concat',
+        '-safe', '0',
+        '-i', 'videos.txt',
+        '-c', 'copy',
+        '-fflags', '+genpts',
+        '-movflags', '+faststart',
+        'final_output.mp4'
+    ]
+
+    # Run the FFmpeg command
+    subprocess.run(ffmpeg_command)
+
+
 @app.post("/process_script")
-def process_script(original_script, new_script):
-    
+def process_script(request: dict):
+    original_script = request["original_script"]
+    new_script = request["new_script"]    
     to_be_synced = []
     to_be_synced_ids = []
     for _, (old_element, new_element) in enumerate(zip(original_script, new_script)):
@@ -53,37 +83,29 @@ def process_script(original_script, new_script):
             if old_element["text"] != new_element["text"]:
                 to_be_synced.append({"idx": _+1, "start": old_element["start"], "end": old_element["end"], "text": new_element["text"]})
                 to_be_synced_ids.append(_+1)
-    time_stamp_tuples = [(x["start"], x["end"]) for x in to_be_synced]
+    time_stamp_tuples = [(x["start"], x["end"], x['idx']) for x in to_be_synced]
+    print('to be synced', to_be_synced_ids)
     
     extract_frames('uploaded_videos/uploaded_video.mp4', time_stamp_tuples)
 
     for i, element in enumerate(to_be_synced):
+        idx = element["idx"]
+        print('idx', idx)
         text = element["text"]
-        get_cloned_voice('output_new.mp3', i, text, 'en')
-        get_lip_sync(f'frames_output/frame_{i+1}.png', f'voice_cloned_outputs/voice_cloned_{i}.wav')
+        get_cloned_voice('uploaded_videos/uploaded_video.wav', idx, text, 'en')
+        get_lip_sync(f'frames_output/frame_{idx}.png', f'voice_cloned_outputs/output_new_{idx}.mp3')
     
     org_time_stamps = [(x["start"], x["end"]) for x in original_script]
 
     extract_videos('uploaded_videos/uploaded_video.mp4', org_time_stamps)
 
-    video_clips = []
+    for i, element in enumerate(original_script):
+        if i+1 in to_be_synced_ids:
+            subprocess.run(['cp', f'lip_sync_outputs/output_new_clip_{i+1}.mp4', f'videos_output/video_{i+1}.mp4'])
 
-    for _, element in enumerate(new_script):
-            
-        if _+1 in to_be_synced_ids:
-            synced_clip_path = f'lip_sync_outputs/output_new_clip_{_+1}.mp4'
-            synced_clip = VideoFileClip(synced_clip_path)
-            video_clips.append(synced_clip)
-        else:
-            video_clip_path = f'videos_output/video_{_+1}.mp4'
-            video_clip = VideoFileClip(video_clip_path)
-            video_clips.append(video_clip)
+    concat_all_vids('videos_output')
 
-    final_video = concatenate_videoclips(video_clips)
-    final_output_path = 'final_video.mp4'
-    final_video.write_videofile(final_output_path)
-
-    return {"message": "Video processed and synced successfully.", "output_video": final_output_path}
+    return {"message": "Video processed and synced successfully.", "output_video": "final_output.mp4"}
 
 
 

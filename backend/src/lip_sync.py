@@ -1,9 +1,12 @@
 import replicate
 import time
 import requests
+import shutil
 import os
 
 def get_lip_sync(face_path, audio_path):
+    if os.path.exists("lip_sync_outputs"):
+        shutil.rmtree("lip_sync_outputs")
     os.makedirs("lip_sync_outputs", exist_ok=True)
 
     face = open(face_path, "rb")
@@ -42,6 +45,6 @@ def get_lip_sync(face_path, audio_path):
         
         filename = f"output_new_clip_{idx}{extension}"
         
-        with open(os.path.join('lip_sync_outputs', filename, 'wb')) as f:
+        with open(os.path.join('lip_sync_outputs', filename), 'wb') as f:
             f.write(response.content)
 

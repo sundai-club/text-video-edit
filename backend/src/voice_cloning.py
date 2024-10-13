@@ -2,10 +2,15 @@ import replicate
 import time
 import sys
 import requests
+import shutil
 import os
 
 
 def get_cloned_voice(speaker_wav_path, idx, text, language):
+
+    if os.path.exists("voice_cloned_outputs"):
+        shutil.rmtree("voice_cloned_outputs")
+    
     os.makedirs("voice_cloned_outputs", exist_ok=True)
 
     speaker = open(speaker_wav_path, "rb")
@@ -42,7 +47,7 @@ def get_cloned_voice(speaker_wav_path, idx, text, language):
         
         filename = f"output_new_{idx}{extension}"
         
-        with open(os.path.join('voice_cloned_outputs', filename, 'wb')) as f:
+        with open(os.path.join('voice_cloned_outputs', filename), 'wb') as f:
             f.write(response.content)
 
 
