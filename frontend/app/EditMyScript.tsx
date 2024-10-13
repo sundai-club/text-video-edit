@@ -3,7 +3,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Play,
   Pause,
@@ -15,6 +14,7 @@ import {
   Download,
   Mic,
   Upload,
+  RotateCcw,
 } from "lucide-react";
 
 interface TranscriptionItem {
@@ -23,55 +23,122 @@ interface TranscriptionItem {
   text: string;
 }
 
+interface ExportTranscriptionItem {
+  start: string;
+  end: string;
+  text: string;
+}
+
+interface IncludedSegment {
+  start: number;
+  end: number;
+  duration: number;
+  displayStart: number;
+  displayEnd: number;
+}
+
+// Placeholder transcript stored outside of useState
+const placeholderTranscript = [
+  { time: "00:00:01.480 - 00:00:02.120", text: " Hi," },
+  { time: "00:00:02.220 - 00:00:02.520", text: " we're" },
+  { time: "00:00:02.520 - 00:00:02.680", text: " from" },
+  { time: "00:00:02.680 - 00:00:03.100", text: " Saturday" },
+  { time: "00:00:03.100 - 00:00:03.480", text: " Club" },
+  { time: "00:00:03.480 - 00:00:03.720", text: " and" },
+  { time: "00:00:03.720 - 00:00:04.000", text: " we're" },
+  { time: "00:00:04.000 - 00:00:04.180", text: " here" },
+  { time: "00:00:04.180 - 00:00:04.460", text: " to" },
+  { time: "00:00:04.460 - 00:00:04.780", text: " hack." },
+  { time: "00:00:07.000 - 00:00:07.640", text: " Welcome" },
+  { time: "00:00:07.640 - 00:00:08.220", text: " to" },
+  { time: "00:00:08.220 - 00:00:08.400", text: " the" },
+  { time: "00:00:08.400 - 00:00:08.600", text: " club." },
+  { time: "00:00:10.960 - 00:00:11.600", text: " Bye" },
+  { time: "00:00:11.600 - 00:00:12.240", text: " bye." },
+];
+
+// Function to parse time strings to seconds
+function parseTimeToSeconds(time: string): number {
+  const parts = time.split(":");
+  let totalSeconds = 0;
+  if (parts.length === 3) {
+    const hours = parseInt(parts[0]);
+    const minutes = parseInt(parts[1]);
+    const seconds = parseFloat(parts[2]);
+    totalSeconds = hours * 3600 + minutes * 60 + seconds;
+  } else if (parts.length === 2) {
+    const minutes = parseInt(parts[0]);
+    const seconds = parseFloat(parts[1]);
+    totalSeconds = minutes * 60 + seconds;
+  }
+  return totalSeconds;
+}
+
+// Function to format seconds to time strings
+function formatTime(time: number): string {
+  const hours = Math.floor(time / 3600);
+  const minutes = Math.floor((time % 3600) / 60);
+  const seconds = Math.floor(time % 60);
+  const milliseconds = Math.floor((time % 1) * 1000);
+  return `${hours.toString().padStart(2, "0")}:${minutes
+    .toString()
+    .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}.${milliseconds
+    .toString()
+    .padStart(3, "0")}`;
+}
+
+// Original transcription initialized from placeholderTranscript
+const originalTranscription: TranscriptionItem[] = placeholderTranscript.map(
+  (item) => {
+    const [startStr, endStr] = item.time.split(" - ");
+    return {
+      start: parseTimeToSeconds(startStr),
+      end: parseTimeToSeconds(endStr),
+      text: item.text,
+    };
+  }
+);
+
 export default function EditMyScript() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const [displayTime, setDisplayTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
-  const [transcription, setTranscription] = useState<TranscriptionItem[]>([
-    { start: 0, end: 5, text: "Welcome to EditMyScript." },
-    {
-      start: 5,
-      end: 10,
-      text: "This is an AI-powered video editing platform.",
-    },
-    {
-      start: 10,
-      end: 15,
-      text: "Edit your video by simply modifying the script.",
-    },
-    {
-      start: 15,
-      end: 20,
-      text: "Our AI will take care of the rest, including voice synthesis.",
-    },
-  ]);
+
+  // Transcription state initialized from originalTranscription
+  const [transcription, setTranscription] = useState<TranscriptionItem[]>(
+    originalTranscription
+  );
   const [editableTranscript, setEditableTranscript] = useState("");
   const [videoSrc, setVideoSrc] = useState("/video.mp4");
   const [isExporting, setIsExporting] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [trimStart, setTrimStart] = useState(0);
-  const [trimEnd, setTrimEnd] = useState(0);
-  const [isTrimmingActive, setIsTrimmingActive] = useState(false);
-  const [trimmedDuration, setTrimmedDuration] = useState(0);
-  const [displayTime, setDisplayTime] = useState(0);
   const animationFrameRef = useRef<number | null>(null);
 
+  // Included segments for playback
+  const [includedSegments, setIncludedSegments] = useState<IncludedSegment[]>(
+    []
+  );
+  const [totalDisplayDuration, setTotalDisplayDuration] = useState(0);
+
   useEffect(() => {
-    setEditableTranscript(
-      transcription
-        .map(
-          (item) =>
-            `[${formatTime(item.start)} - ${formatTime(item.end)}] ${item.text}`
-        )
-        .join("\n")
-    );
+    // Initialize editable transcript and included segments
+    updateEditableTranscript();
+    updateIncludedSegments();
+  }, []);
+
+  useEffect(() => {
+    // Update the editable transcript and included segments when transcription changes
+    updateEditableTranscript();
+    updateIncludedSegments();
   }, [transcription]);
 
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
       if (e.code === "Space") {
+        e.preventDefault();
         togglePlayPause();
       }
     };
@@ -82,22 +149,36 @@ export default function EditMyScript() {
   useEffect(() => {
     const updateVideoTime = () => {
       if (videoRef.current && isPlaying) {
-        const currentTime = videoRef.current.currentTime;
-        
-        if (isTrimmingActive) {
-          if (currentTime < trimStart) {
-            setDisplayTime(currentTime);
-          } else if (currentTime >= trimStart && currentTime < trimEnd) {
-            videoRef.current.currentTime = trimEnd;
-            setDisplayTime(trimStart + (currentTime - trimStart));
-          } else {
-            setDisplayTime(currentTime - (trimEnd - trimStart));
+        let currentTime = videoRef.current.currentTime;
+        const segment = getSegmentByActualTime(currentTime);
+
+        if (segment) {
+          if (currentTime >= segment.end) {
+            const nextSegment = getNextSegment(segment);
+            if (nextSegment) {
+              videoRef.current.currentTime = nextSegment.start;
+              currentTime = nextSegment.start;
+            } else {
+              videoRef.current.pause();
+              setIsPlaying(false);
+              return;
+            }
           }
+          const displayTime = getDisplayTime(currentTime);
+          setDisplayTime(displayTime);
         } else {
-          setDisplayTime(currentTime);
+          const nextSegment = getNextSegmentByTime(currentTime);
+          if (nextSegment) {
+            videoRef.current.currentTime = nextSegment.start;
+            currentTime = nextSegment.start;
+          } else {
+            videoRef.current.pause();
+            setIsPlaying(false);
+            return;
+          }
         }
 
-        setCurrentTime(videoRef.current.currentTime);
+        setCurrentTime(currentTime);
         animationFrameRef.current = requestAnimationFrame(updateVideoTime);
       }
     };
@@ -113,19 +194,28 @@ export default function EditMyScript() {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [isPlaying, isTrimmingActive, trimStart, trimEnd]);
+  }, [isPlaying, includedSegments]);
 
   const togglePlayPause = () => {
     if (videoRef.current) {
       if (videoRef.current.paused) {
-        if (isTrimmingActive && videoRef.current.currentTime >= trimStart && videoRef.current.currentTime < trimEnd) {
-          videoRef.current.currentTime = trimEnd;
+        let currentTime = videoRef.current.currentTime;
+        const segment = getSegmentByActualTime(currentTime);
+        if (!segment) {
+          const nextSegment = getNextSegmentByTime(currentTime);
+          if (nextSegment) {
+            videoRef.current.currentTime = nextSegment.start;
+            currentTime = nextSegment.start;
+          } else {
+            return;
+          }
         }
         videoRef.current.play();
+        setIsPlaying(true);
       } else {
         videoRef.current.pause();
+        setIsPlaying(false);
       }
-      setIsPlaying(!isPlaying);
     }
   };
 
@@ -144,55 +234,31 @@ export default function EditMyScript() {
 
   const handleSeek = (newTime: number[]) => {
     if (videoRef.current) {
-      let seekTime = newTime[0];
-      if (isTrimmingActive) {
-        if (seekTime >= trimStart && seekTime < trimEnd) {
-          seekTime = trimEnd;
-        } else if (seekTime >= trimEnd) {
-          seekTime += (trimEnd - trimStart);
-        }
-      }
-      videoRef.current.currentTime = seekTime;
-      setCurrentTime(seekTime);
-      setDisplayTime(isTrimmingActive ? calculateDisplayTime(seekTime) : seekTime);
+      const displayTime = newTime[0];
+      const actualTime = getActualTime(displayTime);
+      videoRef.current.currentTime = actualTime;
+      setCurrentTime(actualTime);
+      setDisplayTime(displayTime);
     }
-  };
-
-  const calculateDisplayTime = (actualTime: number): number => {
-    if (actualTime < trimStart) {
-      return actualTime;
-    } else if (actualTime >= trimEnd) {
-      return actualTime - (trimEnd - trimStart);
-    } else {
-      return trimStart;
-    }
-  };
-
-  const formatTime = (time: number) => {
-    const minutes = Math.floor(time / 60);
-    const seconds = Math.floor(time % 60);
-    return `${minutes.toString().padStart(2, "0")}:${seconds
-      .toString()
-      .padStart(2, "0")}`;
   };
 
   const handleTranscriptionEdit = (newText: string) => {
     setEditableTranscript(newText);
-    // Here you would typically call an API to update the video based on the new transcription
   };
 
   const handleSaveTranscription = () => {
-    // Parse the editable transcript and update the transcription state
     const newTranscription = editableTranscript
       .split("\n")
       .map((line) => {
-        const match = line.match(/\[(\d{2}:\d{2}) - (\d{2}:\d{2})\] (.+)/);
+        const match = line.match(
+          /\[(\d{2}:\d{2}:\d{2}\.\d{1,3}) - (\d{2}:\d{2}:\d{2}\.\d{1,3})\] ?(.*)/
+        );
         if (match) {
           const [, start, end, text] = match;
           return {
             start: parseTimeToSeconds(start),
             end: parseTimeToSeconds(end),
-            text,
+            text: text || "", // Handle possible empty text
           };
         }
         return null;
@@ -202,36 +268,116 @@ export default function EditMyScript() {
     setTranscription(newTranscription);
   };
 
-  const parseTimeToSeconds = (time: string): number => {
-    const [minutes, seconds] = time.split(":").map(Number);
-    return minutes * 60 + seconds;
+  const updateEditableTranscript = () => {
+    const editableLines = transcription.map((item) => {
+      return `[${formatTime(item.start)} - ${formatTime(item.end)}] ${
+        item.text
+      }`;
+    });
+    setEditableTranscript(editableLines.join("\n"));
   };
 
+  // Update included segments for playback
+  const updateIncludedSegments = () => {
+    let cumulativeDisplayTime = 0;
+    const segments: IncludedSegment[] = [];
+    transcription.forEach((item) => {
+      const duration = item.end - item.start;
+      if (item.text.trim() !== "") {
+        const segment = {
+          start: item.start,
+          end: item.end,
+          duration: duration,
+          displayStart: cumulativeDisplayTime,
+          displayEnd: cumulativeDisplayTime + duration,
+        };
+        cumulativeDisplayTime += duration;
+        segments.push(segment);
+      }
+    });
+    setIncludedSegments(segments);
+    setTotalDisplayDuration(cumulativeDisplayTime);
+  };
+
+  // Map actual video time to display time
+  const getDisplayTime = (actualTime: number): number => {
+    let displayTime = 0;
+    for (const segment of includedSegments) {
+      if (actualTime < segment.start) {
+        break;
+      } else if (actualTime >= segment.start && actualTime <= segment.end) {
+        displayTime += actualTime - segment.start + segment.displayStart;
+        break;
+      } else {
+        displayTime += segment.duration;
+      }
+    }
+    return displayTime;
+  };
+
+  // Map display time to actual video time
+  const getActualTime = (displayTime: number): number => {
+    for (const segment of includedSegments) {
+      if (displayTime < segment.displayStart) {
+        break;
+      } else if (
+        displayTime >= segment.displayStart &&
+        displayTime <= segment.displayEnd
+      ) {
+        return segment.start + (displayTime - segment.displayStart);
+      }
+    }
+    return includedSegments.length > 0
+      ? includedSegments[includedSegments.length - 1].end
+      : 0;
+  };
+
+  const getSegmentByActualTime = (time: number): IncludedSegment | null => {
+    return (
+      includedSegments.find(
+        (segment) => time >= segment.start && time < segment.end
+      ) || null
+    );
+  };
+
+  const getNextSegment = (
+    currentSegment: IncludedSegment
+  ): IncludedSegment | null => {
+    const index = includedSegments.indexOf(currentSegment);
+    if (index >= 0 && index < includedSegments.length - 1) {
+      return includedSegments[index + 1];
+    }
+    return null;
+  };
+
+  const getNextSegmentByTime = (time: number): IncludedSegment | null => {
+    return includedSegments.find((segment) => segment.start > time) || null;
+  };
+
+  // Render the timeline with removed parts in red
   const renderTimeline = () => {
     return (
       <div className="relative w-full h-8 bg-editor-secondary rounded-lg mt-4 overflow-hidden">
-        {transcription.map((item, index) => (
-          <div
-            key={index}
-            className="absolute h-full bg-editor-accent hover:bg-editor-accent-hover transition-colors cursor-pointer"
-            style={{
-              left: `${(item.start / duration) * 100}%`,
-              width: `${((item.end - item.start) / duration) * 100}%`,
-            }}
-            onClick={() => handleSeek([item.start])}
-          />
-        ))}
-        {isTrimmingActive && (
-          <div
-            className="absolute h-full bg-red-500 opacity-50"
-            style={{
-              left: `${(trimStart / duration) * 100}%`,
-              width: `${((trimEnd - trimStart) / duration) * 100}%`,
-            }}
-          />
-        )}
+        {/* Render the entire timeline */}
+        {transcription.map((item, index) => {
+          const isIncluded = item.text.trim() !== "";
+          const left = (item.start / duration) * 100;
+          const width = ((item.end - item.start) / duration) * 100;
+          const color = isIncluded ? "bg-editor-accent" : "bg-red-500";
+          return (
+            <div
+              key={index}
+              className={`absolute h-full ${color}`}
+              style={{
+                left: `${left}%`,
+                width: `${width}%`,
+              }}
+            ></div>
+          );
+        })}
+        {/* Current playback position */}
         <div
-          className="absolute bg-red-500 h-full w-0.5 bg-editor-highlight"
+          className="absolute bg-blue-500 h-full w-0.5"
           style={{ left: `${(currentTime / duration) * 100}%` }}
         />
       </div>
@@ -253,68 +399,34 @@ export default function EditMyScript() {
     }
   };
 
-  const handleExport = async () => {
-    setIsExporting(true);
-    try {
-      // Simulate export process
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+  // Export transcript in specified format
+  const handleExportTranscript = () => {
+    const exportData: ExportTranscriptionItem[] = transcription.map((item) => ({
+      start: formatTime(item.start),
+      end: formatTime(item.end),
+      text: item.text,
+    }));
 
-      // Create a blob with the transcription data
-      const transcriptionBlob = new Blob(
-        [JSON.stringify(transcription, null, 2)],
-        {
-          type: "application/json",
-        }
-      );
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+      type: "application/json",
+    });
 
-      // Create a download link for the transcription
-      const transcriptionUrl = URL.createObjectURL(transcriptionBlob);
-      const transcriptionLink = document.createElement("a");
-      transcriptionLink.href = transcriptionUrl;
-      transcriptionLink.download = "transcription.json";
-
-      // Trigger download for transcription
-      transcriptionLink.click();
-
-      // Create a download link for the video
-      const videoLink = document.createElement("a");
-      videoLink.href = videoSrc;
-      videoLink.download = "edited_video.mp4";
-
-      // Trigger download for video
-      videoLink.click();
-    } catch (error) {
-      console.error("Export failed:", error);
-    } finally {
-      setIsExporting(false);
-    }
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "transcription.json";
+    link.click();
   };
 
-  const handleTrimStartChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newStart = parseFloat(e.target.value);
-    setTrimStart(Math.min(newStart, trimEnd));
-  };
-
-  const handleTrimEndChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newEnd = parseFloat(e.target.value);
-    setTrimEnd(Math.max(newEnd, trimStart));
-  };
-
-  const handleTrim = () => {
-    if (videoRef.current) {
-      videoRef.current.currentTime = 0;
-      setCurrentTime(0);
-      setDisplayTime(0);
-      setIsTrimmingActive(true);
-      setTrimmedDuration(duration - (trimEnd - trimStart));
-    }
-    console.log(`Trimming video from ${trimStart} to ${trimEnd}`);
+  // Export video (placeholder functionality)
+  const handleExportVideo = async () => {
+    alert("Video export functionality requires backend processing.");
   };
 
   return (
     <div className="flex flex-col h-screen bg-editor-background text-editor-text">
       <header className="flex justify-between items-center p-4 bg-editor-header">
-        <h1 className="text-2xl font-bold">EditMyScript</h1>
+        <h1 className="text-2xl font-bold">ScriptCut</h1>
         <div className="flex space-x-2">
           <Button
             variant="default"
@@ -333,11 +445,16 @@ export default function EditMyScript() {
           <Button
             variant="default"
             className="bg-editor-button text-editor-button-text hover:bg-editor-button-hover"
-            onClick={handleExport}
-            disabled={isExporting}
+            onClick={handleExportTranscript}
           >
-            <Download className="mr-2 h-4 w-4" />
-            {isExporting ? "Exporting..." : "Export"}
+            <Download className="mr-2 h-4 w-4" /> Export Transcript
+          </Button>
+          <Button
+            variant="default"
+            className="bg-editor-button text-editor-button-text hover:bg-editor-button-hover"
+            onClick={handleExportVideo}
+          >
+            <Download className="mr-2 h-4 w-4" /> Export Video
           </Button>
         </div>
       </header>
@@ -370,16 +487,16 @@ export default function EditMyScript() {
                   <Button
                     size="icon"
                     variant="ghost"
+                    onClick={() => {
+                      if (videoRef.current) {
+                        videoRef.current.currentTime = 0;
+                        videoRef.current.play();
+                        setIsPlaying(true);
+                      }
+                    }}
                     className="text-white hover:bg-editor-button-hover"
                   >
-                    <SkipBack className="h-6 w-6" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="text-white hover:bg-editor-button-hover"
-                  >
-                    <SkipForward className="h-6 w-6" />
+                    <RotateCcw className="h-6 w-6" />
                   </Button>
                 </div>
                 <div className="flex items-center space-x-2">
@@ -402,57 +519,17 @@ export default function EditMyScript() {
               </div>
               <Slider
                 className="w-full"
-                value={[isTrimmingActive ? calculateDisplayTime(currentTime) : currentTime]}
-                max={isTrimmingActive ? trimmedDuration : duration}
+                value={[displayTime]}
+                max={totalDisplayDuration}
                 step={0.1}
                 onValueChange={handleSeek}
               />
               <div className="flex justify-between text-sm mt-1 text-white">
                 <span>{formatTime(displayTime)}</span>
-                <span>{formatTime(isTrimmingActive ? trimmedDuration : duration)}</span>
               </div>
             </div>
           </div>
           {renderTimeline()}
-          <div className="mt-4 flex items-center space-x-4">
-            <div>
-              <label htmlFor="trimStart" className="block text-sm font-medium">
-                Trim Start
-              </label>
-              <input
-                type="number"
-                id="trimStart"
-                value={trimStart}
-                onChange={handleTrimStartChange}
-                min={0}
-                max={duration}
-                step={0.1}
-                className="mt-1 block w-full rounded-md border-editor-border bg-editor-secondary text-editor-text"
-              />
-            </div>
-            <div>
-              <label htmlFor="trimEnd" className="block text-sm font-medium">
-                Trim End
-              </label>
-              <input
-                type="number"
-                id="trimEnd"
-                value={trimEnd}
-                onChange={handleTrimEndChange}
-                min={0}
-                max={duration}
-                step={0.1}
-                className="mt-1 block w-full rounded-md border-editor-border bg-editor-secondary text-editor-text"
-              />
-            </div>
-            <Button
-              variant="default"
-              className="bg-editor-button text-editor-button-text hover:bg-editor-button-hover mt-6"
-              onClick={handleTrim}
-            >
-              Trim Video
-            </Button>
-          </div>
         </div>
         <div className="w-1/2 p-4 flex flex-col">
           <div className="flex justify-between items-center mb-4">
@@ -465,22 +542,18 @@ export default function EditMyScript() {
               >
                 <Save className="mr-2 h-4 w-4" /> Save
               </Button>
-              <Button
-                variant="outline"
-                className="bg-editor-button text-editor-button-text hover:bg-editor-button-hover"
-              >
-                <Mic className="mr-2 h-4 w-4" /> Replace Voice
-              </Button>
             </div>
           </div>
-          <Textarea
-            value={editableTranscript}
-            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-              handleTranscriptionEdit(e.target.value)
+          {/* Transcription Editor */}
+          <div
+            className="flex-1 bg-editor-secondary text-editor-text border-editor-border resize-none font-mono p-2 overflow-auto"
+            contentEditable
+            onInput={(e) =>
+              handleTranscriptionEdit((e.target as HTMLDivElement).innerText)
             }
-            className="flex-1 bg-editor-secondary text-editor-text border-editor-border resize-none font-mono"
-            placeholder="Edit your transcription here..."
-          />
+            dangerouslySetInnerHTML={{ __html: editableTranscript }}
+            style={{ whiteSpace: "pre-wrap", outline: "none" }}
+          ></div>
         </div>
       </main>
     </div>
