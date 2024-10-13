@@ -51,6 +51,12 @@ export default function EditMyScript() {
   const [isExporting, setIsExporting] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [trimStart, setTrimStart] = useState(0);
+  const [trimEnd, setTrimEnd] = useState(0);
+  const [isTrimmingActive, setIsTrimmingActive] = useState(false);
+  const [trimmedDuration, setTrimmedDuration] = useState(0);
+  const [displayTime, setDisplayTime] = useState(0);
+  const animationFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
     setEditableTranscript(
@@ -73,20 +79,53 @@ export default function EditMyScript() {
     return () => window.removeEventListener("keydown", handleKeyPress);
   }, []);
 
+  useEffect(() => {
+    const updateVideoTime = () => {
+      if (videoRef.current && isPlaying) {
+        const currentTime = videoRef.current.currentTime;
+        
+        if (isTrimmingActive) {
+          if (currentTime < trimStart) {
+            setDisplayTime(currentTime);
+          } else if (currentTime >= trimStart && currentTime < trimEnd) {
+            videoRef.current.currentTime = trimEnd;
+            setDisplayTime(trimStart + (currentTime - trimStart));
+          } else {
+            setDisplayTime(currentTime - (trimEnd - trimStart));
+          }
+        } else {
+          setDisplayTime(currentTime);
+        }
+
+        setCurrentTime(videoRef.current.currentTime);
+        animationFrameRef.current = requestAnimationFrame(updateVideoTime);
+      }
+    };
+
+    if (isPlaying) {
+      animationFrameRef.current = requestAnimationFrame(updateVideoTime);
+    } else if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [isPlaying, isTrimmingActive, trimStart, trimEnd]);
+
   const togglePlayPause = () => {
     if (videoRef.current) {
       if (videoRef.current.paused) {
+        if (isTrimmingActive && videoRef.current.currentTime >= trimStart && videoRef.current.currentTime < trimEnd) {
+          videoRef.current.currentTime = trimEnd;
+        }
         videoRef.current.play();
       } else {
         videoRef.current.pause();
       }
       setIsPlaying(!isPlaying);
-    }
-  };
-
-  const handleTimeUpdate = () => {
-    if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime);
     }
   };
 
@@ -105,8 +144,27 @@ export default function EditMyScript() {
 
   const handleSeek = (newTime: number[]) => {
     if (videoRef.current) {
-      videoRef.current.currentTime = newTime[0];
-      setCurrentTime(newTime[0]);
+      let seekTime = newTime[0];
+      if (isTrimmingActive) {
+        if (seekTime >= trimStart && seekTime < trimEnd) {
+          seekTime = trimEnd;
+        } else if (seekTime >= trimEnd) {
+          seekTime += (trimEnd - trimStart);
+        }
+      }
+      videoRef.current.currentTime = seekTime;
+      setCurrentTime(seekTime);
+      setDisplayTime(isTrimmingActive ? calculateDisplayTime(seekTime) : seekTime);
+    }
+  };
+
+  const calculateDisplayTime = (actualTime: number): number => {
+    if (actualTime < trimStart) {
+      return actualTime;
+    } else if (actualTime >= trimEnd) {
+      return actualTime - (trimEnd - trimStart);
+    } else {
+      return trimStart;
     }
   };
 
@@ -163,8 +221,17 @@ export default function EditMyScript() {
             onClick={() => handleSeek([item.start])}
           />
         ))}
+        {isTrimmingActive && (
+          <div
+            className="absolute h-full bg-red-500 opacity-50"
+            style={{
+              left: `${(trimStart / duration) * 100}%`,
+              width: `${((trimEnd - trimStart) / duration) * 100}%`,
+            }}
+          />
+        )}
         <div
-          className="absolute h-full w-0.5 bg-editor-highlight"
+          className="absolute bg-red-500 h-full w-0.5 bg-editor-highlight"
           style={{ left: `${(currentTime / duration) * 100}%` }}
         />
       </div>
@@ -223,6 +290,27 @@ export default function EditMyScript() {
     }
   };
 
+  const handleTrimStartChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newStart = parseFloat(e.target.value);
+    setTrimStart(Math.min(newStart, trimEnd));
+  };
+
+  const handleTrimEndChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newEnd = parseFloat(e.target.value);
+    setTrimEnd(Math.max(newEnd, trimStart));
+  };
+
+  const handleTrim = () => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = 0;
+      setCurrentTime(0);
+      setDisplayTime(0);
+      setIsTrimmingActive(true);
+      setTrimmedDuration(duration - (trimEnd - trimStart));
+    }
+    console.log(`Trimming video from ${trimStart} to ${trimEnd}`);
+  };
+
   return (
     <div className="flex flex-col h-screen bg-editor-background text-editor-text">
       <header className="flex justify-between items-center p-4 bg-editor-header">
@@ -259,7 +347,6 @@ export default function EditMyScript() {
             <video
               ref={videoRef}
               className="w-full h-full"
-              onTimeUpdate={handleTimeUpdate}
               onLoadedMetadata={handleLoadedMetadata}
             >
               <source src={videoSrc} type="video/mp4" />
@@ -315,18 +402,57 @@ export default function EditMyScript() {
               </div>
               <Slider
                 className="w-full"
-                value={[currentTime]}
-                max={duration}
+                value={[isTrimmingActive ? calculateDisplayTime(currentTime) : currentTime]}
+                max={isTrimmingActive ? trimmedDuration : duration}
                 step={0.1}
                 onValueChange={handleSeek}
               />
               <div className="flex justify-between text-sm mt-1 text-white">
-                <span>{formatTime(currentTime)}</span>
-                <span>{formatTime(duration)}</span>
+                <span>{formatTime(displayTime)}</span>
+                <span>{formatTime(isTrimmingActive ? trimmedDuration : duration)}</span>
               </div>
             </div>
           </div>
           {renderTimeline()}
+          <div className="mt-4 flex items-center space-x-4">
+            <div>
+              <label htmlFor="trimStart" className="block text-sm font-medium">
+                Trim Start
+              </label>
+              <input
+                type="number"
+                id="trimStart"
+                value={trimStart}
+                onChange={handleTrimStartChange}
+                min={0}
+                max={duration}
+                step={0.1}
+                className="mt-1 block w-full rounded-md border-editor-border bg-editor-secondary text-editor-text"
+              />
+            </div>
+            <div>
+              <label htmlFor="trimEnd" className="block text-sm font-medium">
+                Trim End
+              </label>
+              <input
+                type="number"
+                id="trimEnd"
+                value={trimEnd}
+                onChange={handleTrimEndChange}
+                min={0}
+                max={duration}
+                step={0.1}
+                className="mt-1 block w-full rounded-md border-editor-border bg-editor-secondary text-editor-text"
+              />
+            </div>
+            <Button
+              variant="default"
+              className="bg-editor-button text-editor-button-text hover:bg-editor-button-hover mt-6"
+              onClick={handleTrim}
+            >
+              Trim Video
+            </Button>
+          </div>
         </div>
         <div className="w-1/2 p-4 flex flex-col">
           <div className="flex justify-between items-center mb-4">
