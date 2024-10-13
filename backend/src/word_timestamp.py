@@ -29,7 +29,7 @@ def extract_audio(video_path, audio_path):
 
 def transcribe_audio(audio_file):
     # Load the Whisper model
-    model = whisper.load_model("base")
+    model = whisper.load_model("medium")
 
     # Start timing the transcription process
     start_time = time.time()
