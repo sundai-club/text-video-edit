@@ -1,0 +1,151 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 224 71% 4%;
+    --foreground: 213 31% 91%;
+
+    --muted: 223 47% 11%;
+    --muted-foreground: 215.4 16.3% 56.9%;
+
+    --accent: 216 34% 17%;
+    --accent-foreground: 210 40% 98%;
+
+    --popover: 224 71% 4%;
+    --popover-foreground: 215 20.2% 65.1%;
+
+    --border: 216 34% 17%;
+    --input: 216 34% 17%;
+
+    --card: 224 71% 4%;
+    --card-foreground: 213 31% 91%;
+
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 1.2%;
+
+    --secondary: 222.2 47.4% 11.2%;
+    --secondary-foreground: 210 40% 98%;
+
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 210 40% 98%;
+
+    --ring: 216 34% 17%;
+
+    --radius: 0.5rem;
+
+    /* Custom colors for the video editor */
+    --editor-background: 222 47% 11%;
+    --editor-text: 0 0% 100%;
+    --editor-header: 223 47% 11%;
+    --editor-secondary: 220 26% 14%;
+    --editor-accent: 199 89% 48%;
+    --editor-accent-hover: 199 89% 58%;
+    --editor-highlight: 35 91% 62%;
+    --editor-button: 214 59% 15%;
+    --editor-button-hover: 214 59% 25%;
+    --editor-button-text: 0 0% 100%;
+    --editor-border: 215 25% 27%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Custom styles for the video editor */
+.bg-editor-background {
+  background-color: hsl(var(--editor-background));
+}
+.text-editor-text {
+  color: hsl(var(--editor-text));
+}
+.bg-editor-header {
+  background-color: hsl(var(--editor-header));
+}
+.bg-editor-secondary {
+  background-color: hsl(var(--editor-secondary));
+}
+.bg-editor-accent {
+  background-color: hsl(var(--editor-accent));
+}
+.hover\:bg-editor-accent-hover:hover {
+  background-color: hsl(var(--editor-accent-hover));
+}
+.bg-editor-highlight {
+  background-color: hsl(var(--editor-highlight));
+}
+.bg-editor-button {
+  background-color: hsl(var(--editor-button));
+}
+.hover\:bg-editor-button-hover:hover {
+  background-color: hsl(var(--editor-button-hover));
+}
+.text-editor-button-text {
+  color: hsl(var(--editor-button-text));
+}
+.border-editor-border {
+  border-color: hsl(var(--editor-border));
+}
+
+/* Scrollbar styles */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--editor-secondary));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--editor-accent));
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--editor-accent-hover));
+}
+
+/* Typography */
+body {
+  font-family: "Inter", sans-serif;
+}
+
+/* Smooth transitions */
+.transition-all {
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* Custom focus styles */
+.focus\:ring-2:focus {
+  --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0
+    var(--tw-ring-offset-width) var(--tw-ring-offset-color);
+  --tw-ring-shadow: var(--tw-ring-inset) 0 0 0
+    calc(2px + var(--tw-ring-offset-width)) hsl(var(--editor-accent));
+  box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow),
+    var(--tw-shadow, 0 0 #0000);
+}
+
+/* Enhance button styles */
+.button {
+  @apply px-4 py-2 rounded-md font-medium transition-all duration-200 ease-in-out;
+}
+
+.button:hover {
+  @apply transform scale-105;
+}
+
+/* Add some depth to the UI  */
+.shadow-soft {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
