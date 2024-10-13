@@ -1,6 +1,6 @@
 import subprocess
 
-def get_audio(input_video_file, output_audio_file):
+def extract_audio(input_video_file, output_audio_file):
     subprocess.run([
             "ffmpeg",
             "-i", input_video_file,  # Input video file

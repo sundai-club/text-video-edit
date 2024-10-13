@@ -2,10 +2,12 @@ import replicate
 import time
 import sys
 import requests
+import os
 
 
+def get_cloned_voice(speaker_wav_path, idx, text, language):
+    os.makedirs("voice_cloned_outputs", exist_ok=True)
 
-def get_cloned_voice(speaker_wav_path, text, language):
     speaker = open(speaker_wav_path, "rb")
 
     input = {
@@ -38,9 +40,9 @@ def get_cloned_voice(speaker_wav_path, text, language):
         if 'audio' in content_type:
             extension = '.mp3'
         
-        filename = f"output_new{extension}"
+        filename = f"output_new_{idx}{extension}"
         
-        with open(filename, 'wb') as f:
+        with open(os.path.join('voice_cloned_outputs', filename, 'wb')) as f:
             f.write(response.content)
 
 
