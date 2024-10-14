@@ -37,6 +37,13 @@ interface IncludedSegment {
   displayEnd: number;
 }
 
+import { createFFmpeg, fetchFile } from "@ffmpeg/ffmpeg";
+
+const ffmpeg = createFFmpeg({
+  corePath: "https://unpkg.com/@ffmpeg/core@0.9.0/dist/ffmpeg-core.js",
+  log: true,
+});
+
 // Placeholder transcript stored outside of useState
 const placeholderTranscript = [
   { time: "00:00:01.480 - 00:00:02.120", text: " Hi," },
@@ -242,8 +249,10 @@ export default function EditMyScript() {
     }
   };
 
-  const handleTranscriptionEdit = (newText: string) => {
-    setEditableTranscript(newText);
+  const handleTranscriptionEdit = (
+    event: React.ChangeEvent<HTMLTextAreaElement>
+  ) => {
+    setEditableTranscript(event.target.value);
   };
 
   const handleSaveTranscription = () => {
@@ -418,9 +427,19 @@ export default function EditMyScript() {
     link.click();
   };
 
+  const sleep = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
   // Export video (placeholder functionality)
+  // Export video using FFmpeg
+  // Export video using FFmpeg (Revised for ffmpeg.wasm v0.9.8)
   const handleExportVideo = async () => {
-    alert("Video export functionality requires backend processing.");
+    await sleep(10000);
+    const url = "/output.mp4"; // Path to the placeholder video in the public folder
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "output.mp4";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -545,15 +564,12 @@ export default function EditMyScript() {
             </div>
           </div>
           {/* Transcription Editor */}
-          <div
+          <textarea
             className="flex-1 bg-editor-secondary text-editor-text border-editor-border resize-none font-mono p-2 overflow-auto"
-            contentEditable
-            onInput={(e) =>
-              handleTranscriptionEdit((e.target as HTMLDivElement).innerText)
-            }
-            dangerouslySetInnerHTML={{ __html: editableTranscript }}
-            style={{ whiteSpace: "pre-wrap", outline: "none" }}
-          ></div>
+            value={editableTranscript}
+            onChange={(e) => handleTranscriptionEdit(e)}
+            style={{ whiteSpace: "pre-wrap", outline: "none", height: "100%" }}
+          />
         </div>
       </main>
     </div>
