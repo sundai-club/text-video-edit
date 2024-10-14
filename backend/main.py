@@ -13,7 +13,9 @@ from src.voice_cloning import get_cloned_voice
 import os
 import subprocess
 from moviepy.editor import VideoFileClip, concatenate_videoclips
+import logging
 
+logging.basicConfig(level=logging.INFO)
 
 app = FastAPI()
 # app.add_middleware(
@@ -47,16 +49,22 @@ def time_str_to_seconds(time_str):
 
 
 def concat_all_vids(video_directory):
-    video_files = ['videos_output/' + f for f in os.listdir(video_directory) if f.endswith('.mp4')]
+    if not os.path.exists(video_directory):
+        logging.error(f"Directory {video_directory} does not exist")
+        return
 
-    video_files.sort()  # Sorts alphabetically, adjust as needed
+    video_files = [os.path.join(video_directory, f) for f in os.listdir(video_directory) if f.endswith('.mp4')]
 
-    # Create the text file for FFmpeg
+    if not video_files:
+        logging.error(f"No MP4 files found in {video_directory}")
+        return
+
+    video_files.sort()
+
     with open('videos.txt', 'w') as file:
         for video in video_files:
             file.write(f"file '{video}'\n")
 
-    # Construct the FFmpeg command
     ffmpeg_command = [
         'ffmpeg',
         '-f', 'concat',
@@ -68,8 +76,14 @@ def concat_all_vids(video_directory):
         'final_output.mp4'
     ]
 
-    # Run the FFmpeg command
-    subprocess.run(ffmpeg_command)
+    try:
+        result = subprocess.run(ffmpeg_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode != 0:
+            logging.error(f"Error concatenating videos: {result.stderr}")
+        else:
+            logging.info("Successfully concatenated videos")
+    except Exception as e:
+        logging.error(f"Error concatenating videos: {str(e)}")
 
 
 @app.post("/process_script")
@@ -101,6 +115,7 @@ def process_script(request: dict):
 
     for i, element in enumerate(original_script):
         if i+1 in to_be_synced_ids:
+            print('Copying video', i+1)
             subprocess.run(['cp', f'lip_sync_outputs/output_new_clip_{i+1}.mp4', f'videos_output/video_{i+1}.mp4'])
 
     concat_all_vids('videos_output')

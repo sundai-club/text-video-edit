@@ -4,6 +4,10 @@ import subprocess
 import shutil
 
 from datetime import datetime, timedelta
+import logging
+
+logging.basicConfig(level=logging.INFO)
+
 def extract_frames(video_path, timestamp_tuples, output_dir='frames_output'):
     if os.path.exists(output_dir):
         shutil.rmtree(output_dir)
@@ -42,25 +46,33 @@ def extract_videos(video_path, timestamp_tuples, output_dir='videos_output'):
         output_video_path = os.path.join(output_dir, f"video_{idx}.mp4")
         output_files.append(output_video_path)
         
-        # Convert start and end times to datetime objects
-        start = datetime.strptime(start_time.strip('"'), "%H:%M:%S.%f")
-        end = datetime.strptime(end_time.strip('"'), "%H:%M:%S.%f")
+        try:
+            # Convert start and end times to datetime objects
+            start = datetime.strptime(start_time.strip('"'), "%H:%M:%S.%f")
+            end = datetime.strptime(end_time.strip('"'), "%H:%M:%S.%f")
+            
+            # Calculate duration in seconds
+            duration_seconds = (end - start).total_seconds()
+            
+            command = [
+                'ffmpeg',
+                '-i', video_path,
+                '-ss', start_time.strip('"'),
+                '-t', str(duration_seconds),
+                '-c', 'copy',
+                output_video_path,
+                '-y'
+            ]
+            
+            # Run the ffmpeg command using subprocess
+            result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            
+            if result.returncode != 0:
+                logging.error(f"Error processing video segment {idx}: {result.stderr}")
+            else:
+                logging.info(f"Successfully extracted video segment {idx}")
         
-        # Calculate duration
-        duration = end - start
-        duration_str = str(duration)
-        
-        command = [
-            'ffmpeg',
-            '-i', video_path,        # Input video
-            '-ss', start_time.strip('"'),  # Seek to the start_time
-            '-t', duration_str,      # Extract the duration
-            '-c', 'copy',            # Copy the video stream
-            output_video_path,       # Output file path
-            '-y'                     # Overwrite output if exists
-        ]
-        
-        # Run the ffmpeg command using subprocess
-        subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        except Exception as e:
+            logging.error(f"Error processing video segment {idx}: {str(e)}")
     
     return output_files
