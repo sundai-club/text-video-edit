@@ -14,6 +14,7 @@ import os
 import subprocess
 from moviepy.editor import VideoFileClip, concatenate_videoclips
 import logging
+import json
 
 logging.basicConfig(level=logging.INFO)
 
@@ -39,8 +40,10 @@ async def upload_mp4(file: UploadFile = File(...)):
 
     extract_audio(video_path, video_path.with_suffix(".wav"))
     transcribed_audio = transcribe_audio(video_path.with_suffix(".wav"))
+    with open(video_path.with_suffix(".json"), "w") as f:
+        json.dump(transcribed_audio, f)
 
-    return {"transciption": transcribed_audio}
+    return {"transcription": transcribed_audio}
 
 def time_str_to_seconds(time_str):
     """Convert a timestamp string (HH:MM:SS.sss) to seconds."""
@@ -70,9 +73,8 @@ def concat_all_vids(video_directory):
         '-f', 'concat',
         '-safe', '0',
         '-i', 'videos.txt',
-        '-c', 'copy',
-        '-fflags', '+genpts',
-        '-movflags', '+faststart',
+        '-c:v', 'libx264',
+        '-strict', '-2',
         'final_output.mp4'
     ]
 
@@ -122,13 +124,6 @@ def process_script(request: dict):
 
     return {"message": "Video processed and synced successfully.", "output_video": "final_output.mp4"}
 
-
-
-
-    
-    
-    
-    
 
 
 if __name__ == "__main__":

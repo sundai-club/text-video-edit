@@ -39,7 +39,7 @@ def transcribe_audio(audio_file):
                 model="whisper-1",
                 file=audio,
                 response_format="verbose_json",
-                timestamp_granularities=["word"]
+                timestamp_granularities=["word"],
             )
         return process_transcription(response)
     except Exception as e:

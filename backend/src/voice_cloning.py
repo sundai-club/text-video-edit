@@ -4,7 +4,7 @@ import sys
 import requests
 import shutil
 import os
-
+import json
 
 def get_cloned_voice(speaker_wav_path, idx, text, language):
 
@@ -14,17 +14,20 @@ def get_cloned_voice(speaker_wav_path, idx, text, language):
     os.makedirs("voice_cloned_outputs", exist_ok=True)
 
     speaker = open(speaker_wav_path, "rb")
+    ref_text = json.load(open(speaker_wav_path.replace(".wav", ".json"), 'rb'))
+    ref_text = [t['text'] for t in ref_text]
+    ref_text = ' '.join(ref_text)
+
 
     input = {
-            "speaker": speaker,
-            "text": text,
-            "language": language,
-            "cleanup_voice": True,
-
+            "gen_text": text,
+            "ref_text": ref_text,
+            "ref_audio": speaker,
             }
 
+
     prediction = replicate.predictions.create(
-        "684bc3855b37866c0c65add2ff39c78f3dea3f4ff103a436465326e0f438d55e",
+        "87faf6dd7a692dd82043f662e76369cab126a2cf1937e25a9d41e0b834fd230e",
         input=input
     )
 
