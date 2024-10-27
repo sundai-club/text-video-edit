@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 from src.get_audio import extract_audio
 from src.word_timestamp import transcribe_audio
-from src.get_video_clips import extract_frames, extract_videos
+from src.get_video_clips import extract_videos
 from src.lip_sync import get_lip_sync
 from src.voice_cloning import get_cloned_voice
 import os
@@ -75,7 +75,8 @@ def concat_all_vids(video_directory):
         '-i', 'videos.txt',
         '-c:v', 'libx264',
         '-strict', '-2',
-        'final_output.mp4'
+        'final_output.mp4',
+        '-y'
     ]
 
     try:
@@ -99,21 +100,31 @@ def process_script(request: dict):
             if old_element["text"] != new_element["text"]:
                 to_be_synced.append({"idx": _+1, "start": old_element["start"], "end": old_element["end"], "text": new_element["text"]})
                 to_be_synced_ids.append(_+1)
-    time_stamp_tuples = [(x["start"], x["end"], x['idx']) for x in to_be_synced]
     print('to be synced', to_be_synced_ids)
     
-    extract_frames('uploaded_videos/uploaded_video.mp4', time_stamp_tuples)
 
     for i, element in enumerate(to_be_synced):
         idx = element["idx"]
         print('idx', idx)
         text = element["text"]
         get_cloned_voice('uploaded_videos/uploaded_video.wav', idx, text, 'en')
-        get_lip_sync(f'frames_output/frame_{idx}.png', f'voice_cloned_outputs/output_new_{idx}.mp3')
+        get_lip_sync(f'videos_output/video_{idx}.mp4', f'videos_output/video_{idx}.mp4')
     
-    org_time_stamps = [(x["start"], x["end"]) for x in original_script]
+    to_cut_timestamps = []
+    end = None  # Initialize end variable to prevent reference errors
 
-    extract_videos('uploaded_videos/uploaded_video.mp4', org_time_stamps)
+    for i, element in enumerate(original_script):
+        start = element["start"]
+        if i + 1 in to_be_synced_ids:
+            if end is not None:  # Ensure end is defined
+                to_cut_timestamps.append((start, end))
+            to_cut_timestamps.append((element["start"], element["end"]))
+        else:
+            end = element["end"]
+    
+    print('org time stamps', to_cut_timestamps)
+
+    extract_videos('uploaded_videos/uploaded_video.mp4', to_cut_timestamps)
 
     for i, element in enumerate(original_script):
         if i+1 in to_be_synced_ids:
