@@ -98,38 +98,65 @@ def process_script(request: dict):
     for _, (old_element, new_element) in enumerate(zip(original_script, new_script)):
         if old_element["start"] == new_element["start"] and old_element["end"] == new_element["end"]:
             if old_element["text"] != new_element["text"]:
-                to_be_synced.append({"idx": _+1, "start": old_element["start"], "end": old_element["end"], "text": new_element["text"]})
-                to_be_synced_ids.append(_+1)
+                to_be_synced.append({"idx": _, "start": old_element["start"], "end": old_element["end"], "text": new_element["text"]})
+                to_be_synced_ids.append(_)
     print('to be synced', to_be_synced_ids)
-    
 
-    for i, element in enumerate(to_be_synced):
-        idx = element["idx"]
-        print('idx', idx)
-        text = element["text"]
-        get_cloned_voice('uploaded_videos/uploaded_video.wav', idx, text, 'en')
-        get_lip_sync(f'videos_output/video_{idx}.mp4', f'videos_output/video_{idx}.mp4')
-    
     to_cut_timestamps = []
-    end = None  # Initialize end variable to prevent reference errors
+    timestamp_indices = []  
+    current_index = 0  
+    to_be_synced_ids_map = {}
 
-    for i, element in enumerate(original_script):
-        start = element["start"]
-        if i + 1 in to_be_synced_ids:
-            if end is not None:  # Ensure end is defined
-                to_cut_timestamps.append((start, end))
-            to_cut_timestamps.append((element["start"], element["end"]))
-        else:
-            end = element["end"]
-    
-    print('org time stamps', to_cut_timestamps)
+    if to_be_synced_ids and to_be_synced_ids[0] > 0:
+        sync_start = original_script[to_be_synced_ids[0]]["start"]
+        to_cut_timestamps.append((
+            original_script[0]["start"],
+            sync_start  
+        ))
+        timestamp_indices.append(-1)  
+        current_index += 1
+
+    for idx, sync_id in enumerate(to_be_synced_ids):
+        to_cut_timestamps.append((
+            original_script[sync_id]["start"],
+            original_script[sync_id]["end"]
+        ))
+        print('sync', original_script[sync_id]["start"], original_script[sync_id]["end"])
+
+        timestamp_indices.append(current_index)  
+        to_be_synced_ids_map[sync_id] = current_index
+        current_index += 1
+        
+        if idx < len(to_be_synced_ids) - 1:
+            next_sync_id = to_be_synced_ids[idx + 1]
+            if next_sync_id - sync_id > 1:  
+                to_cut_timestamps.append((
+                    original_script[sync_id + 1]["start"],
+                    original_script[next_sync_id - 1]["end"]
+                ))
+                timestamp_indices.append(-1)  
+                current_index += 1
+        elif sync_id < len(original_script) - 1:
+            to_cut_timestamps.append((
+                original_script[sync_id + 1]["start"],
+                original_script[-1]["end"]
+            ))
+            timestamp_indices.append(-1)  
+            current_index += 1
 
     extract_videos('uploaded_videos/uploaded_video.mp4', to_cut_timestamps)
 
-    for i, element in enumerate(original_script):
-        if i+1 in to_be_synced_ids:
-            print('Copying video', i+1)
-            subprocess.run(['cp', f'lip_sync_outputs/output_new_clip_{i+1}.mp4', f'videos_output/video_{i+1}.mp4'])
+    for i, element in enumerate(to_be_synced):
+        idx = element["idx"]
+        id_ = to_be_synced_ids_map[idx]
+        print('Syncing video', id_)
+        text = element["text"]
+        get_cloned_voice('uploaded_videos/uploaded_video.wav', id_, text, 'en')
+        get_lip_sync(f'videos_output/video_{id_}.mp4', f'voice_cloned_outputs/output_new_{id_}.mp3')
+        subprocess.run(['cp', f'lip_sync_outputs/output_new_clip_{id_}.mp4', f'videos_output/video_{id_}.mp4'])
+
+    
+    print('org time stamps', to_cut_timestamps)
 
     concat_all_vids('videos_output')
 

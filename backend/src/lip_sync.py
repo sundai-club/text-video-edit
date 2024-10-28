@@ -9,17 +9,18 @@ def get_lip_sync(face_path, audio_path):
         shutil.rmtree("lip_sync_outputs")
     os.makedirs("lip_sync_outputs", exist_ok=True)
 
+
     face = open(face_path, "rb")
+
     audio = open(audio_path, "rb")
+
     idx = face_path.split('.')[0].split('_')[-1]
 
     input={
         "face": face,
         "audio": audio,
         "fps": 25,
-        "pads": "0 10 0 0",
-        "smooth": True,
-        "resize_factor": 1
+        "pads": "0 0 0 0",
     }
 
     prediction = replicate.predictions.create(
