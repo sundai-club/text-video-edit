@@ -1,5 +1,4 @@
 import streamlit as st
-import requests
 from src.word_timestamp import transcribe_audio
 from utils import save_uploaded_video, extract_audio, extract_video_segments, modify_and_patch_video
 import logging
@@ -27,6 +26,7 @@ if 'new_script' not in st.session_state:
 st.session_state.bloopers = False
 
 with st.sidebar:
+    st.image('sundai_logo.jpg', width=100)
     st.title("ScriptCut")
     st.write("Your personal script editor")
 

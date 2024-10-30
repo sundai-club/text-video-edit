@@ -1,4 +1,6 @@
 python-multipart
 replicate
-openai-whisper
+openai
+streamlit
+moviepy
 
