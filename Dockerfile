@@ -6,8 +6,8 @@ ENV HOST 0.0.0.0
 WORKDIR /app
 COPY . ./
 ENV TMPDIR='/var/tmp'
-RUN sudo apt-get update
-RUN sudo apt-get install ffmpeg -y
+RUN apt-get update
+RUN apt-get install ffmpeg -y
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 ENTRYPOINT ["streamlit", "run"]
