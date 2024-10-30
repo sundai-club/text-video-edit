@@ -12,9 +12,6 @@ st.set_page_config(
 )
 st.title("ScriptCut")
 
-
-
-# Initialize a variable to hold the transcribed text
 transcribed_text = ""
 
 if 'original_script' not in st.session_state:
@@ -42,7 +39,7 @@ with cols[0]:
     st.subheader("Upload Video")
     uploaded_video = st.file_uploader("Upload Video")
     if uploaded_video is not None:
-        st.video(uploaded_video)
+        st.video(uploaded_video, format="video/mp4")
         video_path = save_uploaded_video(uploaded_video)
         audio_path = extract_audio(video_path)        
         if 'audio_path' not in st.session_state:
@@ -91,7 +88,7 @@ with cols[1]:
             new_script_final = new_time_stamps
 
         new_video_path = extract_video_segments(st.session_state.original_video_path, new_script_final)
-        st.video(new_video_path)
+        st.video(new_video_path, format="video/mp4")
         
         if 'new_video_path' not in st.session_state:
             st.session_state.new_video_path = new_video_path
@@ -102,8 +99,7 @@ with cols[1]:
             st.session_state.ref_text = ref_text
         transcript = ['[' + x['start'] + ' - ' + x['end'] +']'+ ' :|: ' +  x['text'] for x in transcript_response]
         transcribed_text = '\n'.join(transcript)
-        if 'new_transcript' not in st.session_state:
-            st.session_state.new_transcript = transcribed_text
+        st.session_state.new_transcript = transcribed_text
 
 if not st.session_state.bloopers:
     with cols[2]:
@@ -132,31 +128,5 @@ if not st.session_state.bloopers:
                                                         to_be_synced_time_stamps, 
                                                         st.session_state.ref_text)
 
-                st.video(synced_video_path)
+                st.video(synced_video_path, format="video/mp4")
             
-
-
-
-
-
-        
-
-        
-
-        # # You can do something with `script` here if the user makes changes or adds text
-        # if script:
-        #     st.write("Edited/Added Script:")
-        #     st.write(script)
-        #     submit = st.button("Submit")
-
-        #     if submit:
-        #         # Send the edited script to the API
-        #         script_response = requests.post(
-        #             'http://127.0.0.1:8000/process_script/',
-        #             json={'original_script': transcript, 'new_script': script}
-        #         )
-
-        #         if script_response.status_code == 200:
-        #             # Process the script response
-        #             script_data = script_response.json()
-        #             new_script = script_data['new_script']  # Fixed the typo from 'new_script' to 'new_script'

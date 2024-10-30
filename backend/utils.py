@@ -5,7 +5,7 @@ from moviepy.editor import VideoFileClip, concatenate_videoclips, AudioFileClip
 import replicate
 import time
 import requests
-
+from moviepy.audio.fx.all import volumex
 
 DATA_DIR = 'data'
 
@@ -54,7 +54,6 @@ def get_cloned_voice(audio_path, ref_text, text):
             "gen_text": text,
             "ref_text": ref_text,
             "ref_audio": speaker,
-            "speed": 0.8
             }
 
 
@@ -104,8 +103,10 @@ def modify_and_patch_video(video_path, audio_path, timestamps, ref_text):
             segment = video.subclip(start, end)
             text = ts['text']
             to_set_audio_path = get_cloned_voice(audio_path, ref_text, text)
-            new_audio = AudioFileClip(to_set_audio_path).subclip(0)
+            new_audio = AudioFileClip(to_set_audio_path)
+            new_audio = volumex(new_audio, 1.5)
             segment = segment.set_audio(new_audio)
+
         else:
             segment = video.subclip(start, end)
         segments.append(segment)
