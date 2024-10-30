@@ -23,7 +23,7 @@ if 'new_script' not in st.session_state:
 st.session_state.bloopers = False
 
 with st.sidebar:
-    st.image('sundai_logo.jpg', width=100)
+    # st.image('sundai_logo.jpg', width=100)
     st.title("ScriptCut")
     st.write("Your personal script editor")
 
