@@ -1,10 +1,14 @@
 import streamlit as st
 import requests
+from src.word_timestamp import transcribe_audio
+from utils import save_uploaded_video, extract_audio, extract_video_segments, modify_and_patch_video
+import logging
+logging.basicConfig(level=logging.INFO)
 
-st.title('Script Cut')
+
 
 # Create two columns
-cols = st.columns(2)
+cols = st.columns(3)
 
 # Initialize a variable to hold the transcribed text
 transcribed_text = ""
@@ -15,31 +19,24 @@ if 'original_script' not in st.session_state:
 if 'new_script' not in st.session_state:
     st.session_state.new_script = []
 
-# Left column for video upload
+
 with cols[0]:
     uploaded_video = st.file_uploader("Upload Video")
     if uploaded_video is not None:
         st.video(uploaded_video)
+        video_path = save_uploaded_video(uploaded_video)
+        audio_path = extract_audio(video_path)        
+        if 'audio_path' not in st.session_state:
+            st.session_state.audio_path = audio_path
+        transcript_response = transcribe_audio(audio_path)
+        ref_text = ''.join([x['text'] for x in transcript_response])
+        transcript = ['[' + x['start'] + ' - ' + x['end'] +']'+ ' :|: ' +  x['text'] for x in transcript_response]
+        transcribed_text = '\n'.join(transcript)
+        st.session_state.original_script = transcribed_text
+        if 'original_video_path' not in st.session_state:
+            st.session_state.original_video_path = video_path
         
-        # Send video to the API
-        transcript_response = requests.post(
-            'http://127.0.0.1:8000/upload_mp4/',
-            files={'file': uploaded_video}
-        )
-
-        if transcript_response.status_code == 200:
-            # Process the transcript response
-            transcript_data = transcript_response.json()
-            transcript = transcript_data['transcription']  # Fixed the typo from 'transciption' to 'transcription'
-
-            # Extract text and timestamps from the transcript
-            transcribed_text = ' '.join([x['text'] for x in transcript])
-            st.session_state.original_script = transcribed_text.split(' ')
-
-            time_stamps = [(x['start'], x['end']) for x in transcript]
-
-        else:
-            st.error(f"Failed to process transcript. Error code: {transcript_response.status_code}")
+        
 
 # Right column for transcript display and editing
 with cols[1]:
@@ -47,17 +44,65 @@ with cols[1]:
     script = st.text_area("Transcript", transcribed_text, height=300, placeholder="Script")
     submit = st.button("Submit")
     new_script_final = []
+    new_time_stamps = []
     if submit:
         if script:
-            new_script = script.split(' ')
-            for i in range(len(st.session_state.original_script)):
-                if st.session_state.original_script[i] == new_script[i]:
-                    new_script_final.append(st.session_state.original_script[i])
+            new_script = script.split('\n')
+            for line in new_script:
+                timestamp_list = line.split(':|:')
+                timestamp = timestamp_list[0]
+                text = timestamp_list[1]
+                start = timestamp.split('-')[0].replace('[', '').strip()
+                end = timestamp.split('-')[1].replace(']', '').strip()
+                new_script_final.append({'start': start, 'end': end, 'text': text})
+            st.session_state.new_script = script
+        
+        new_video_path = extract_video_segments(st.session_state.original_video_path, new_script_final)
+        st.video(new_video_path)
+        if 'new_video_path' not in st.session_state:
+            st.session_state.new_video_path = new_video_path
+
+with cols[2]:
+
+    new_audio_path = extract_audio(st.session_state.new_video_path)        
+    transcript_response = transcribe_audio(new_audio_path)
+    ref_text = ''.join([x['text'] for x in transcript_response])
+    if 'ref_text' not in st.session_state:
+        st.session_state.ref_text = ref_text
+    transcript = ['[' + x['start'] + ' - ' + x['end'] +']'+ ' :|: ' +  x['text'] for x in transcript_response]
+    transcribed_text = '\n'.join(transcript)
+    if 'new_transcript' not in st.session_state:
+        st.session_state.new_transcript = transcribed_text
+
+    new_new_script = st.text_area("Transcript", st.session_state.new_transcript, height=300)
+    process = st.button("Process")
+
+    to_be_synced_time_stamps = []
+    if process:
+        if new_new_script:
+            for old_line, new_line in zip(st.session_state.new_transcript.split('\n'), new_new_script.split('\n')):
+                timestamp_list = new_line.split(':|:')
+                timestamp = timestamp_list[0]
+                text = timestamp_list[1]
+                start = timestamp.split('-')[0].replace('[', '').strip()
+                end = timestamp.split('-')[1].replace(']', '').strip()
+
+                if old_line != new_line:
+                    to_be_synced_time_stamps.append({'start': start, 'end': end, 'text': text, 'sync': True})
                 else:
-                    if st.session_state.original_script[i] in new_script:
-                        new_script_final.append(st.session_state.original_script[i])
-                    else:
-                        new_script_final.append(new_script[i])
+                    to_be_synced_time_stamps.append({'start': start, 'end': end, 'text': text, 'sync': False})
+            
+            synced_video_path = modify_and_patch_video(st.session_state.new_video_path, 
+                                                       st.session_state.audio_path, 
+                                                       to_be_synced_time_stamps, 
+                                                       st.session_state.ref_text)
+
+            st.video(synced_video_path)
+        
+
+
+
+
 
     
 

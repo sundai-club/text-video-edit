@@ -39,7 +39,9 @@ def transcribe_audio(audio_file):
                 model="whisper-1",
                 file=audio,
                 response_format="verbose_json",
+                temperature=0,
                 timestamp_granularities=["word"],
+                prompt="Umm, let me think like, uh, uh, hmm... Okay, here's what I, I'm, like, thinking."
             )
         return process_transcription(response)
     except Exception as e:

@@ -102,49 +102,23 @@ def process_script(request: dict):
                 to_be_synced_ids.append(_)
     print('to be synced', to_be_synced_ids)
 
-    to_cut_timestamps = []
-    timestamp_indices = []  
-    current_index = 0  
+    final_timestamps = {}
     to_be_synced_ids_map = {}
 
-    if to_be_synced_ids and to_be_synced_ids[0] > 0:
-        sync_start = original_script[to_be_synced_ids[0]]["start"]
-        to_cut_timestamps.append((
-            original_script[0]["start"],
-            sync_start  
-        ))
-        timestamp_indices.append(-1)  
-        current_index += 1
+    start = original_script[0]['start']
+    clip = 1
+    for i, (org, new) in enumerate(zip(original_script, new_script)):
+        if org['start'] == new['start'] and org['end'] == new['end']:
+            if org['text'] == new['text']:
+                final_timestamps[clip] = (start, org['end'])
+            else:
+                clip+=1
+                final_timestamps[clip] = (new['start'], new['end'])
+                to_be_synced_ids_map[clip] = i
+                start = new['end']
+                clip+=1
 
-    for idx, sync_id in enumerate(to_be_synced_ids):
-        to_cut_timestamps.append((
-            original_script[sync_id]["start"],
-            original_script[sync_id]["end"]
-        ))
-        print('sync', original_script[sync_id]["start"], original_script[sync_id]["end"])
-
-        timestamp_indices.append(current_index)  
-        to_be_synced_ids_map[sync_id] = current_index
-        current_index += 1
-        
-        if idx < len(to_be_synced_ids) - 1:
-            next_sync_id = to_be_synced_ids[idx + 1]
-            if next_sync_id - sync_id > 1:  
-                to_cut_timestamps.append((
-                    original_script[sync_id + 1]["start"],
-                    original_script[next_sync_id - 1]["end"]
-                ))
-                timestamp_indices.append(-1)  
-                current_index += 1
-        elif sync_id < len(original_script) - 1:
-            to_cut_timestamps.append((
-                original_script[sync_id + 1]["start"],
-                original_script[-1]["end"]
-            ))
-            timestamp_indices.append(-1)  
-            current_index += 1
-
-    extract_videos('uploaded_videos/uploaded_video.mp4', to_cut_timestamps)
+    extract_videos('uploaded_videos/uploaded_video.mp4', final_timestamps)
 
     for i, element in enumerate(to_be_synced):
         idx = element["idx"]
