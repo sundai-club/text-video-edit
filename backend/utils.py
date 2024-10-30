@@ -1,268 +1,176 @@
-# app.py
-import streamlit as st
-from src.word_timestamp import transcribe_audio
-from utils import (
-    save_uploaded_video, 
-    extract_audio, 
-    extract_video_segments, 
-    modify_and_patch_video,
-    cleanup_old_files
-)
-import logging
-from datetime import datetime
+import tempfile
 import os
+import subprocess
+from moviepy.editor import VideoFileClip, concatenate_videoclips, AudioFileClip
+import replicate
+import time
+import requests
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
-def init_session_state():
-    """Initialize session state variables"""
-    initial_state = {
-        'original_script': [],
-        'new_script': [],
-        'bloopers': False,
-        'audio_path': None,
-        'original_video_path': None,
-        'new_video_path': None,
-        'ref_text': None,
-        'new_transcript': None,
-        'last_processed_time': None
-    }
+DATA_DIR = 'data'
+
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR)
+
+def save_uploaded_video(uploaded_video):
+    with open(DATA_DIR + '/uploaded_video.mp4', 'wb') as f:
+        f.write(uploaded_video.getbuffer())
+    return DATA_DIR + '/uploaded_video.mp4'
+
+def extract_audio(video_path):
+    audio_path = DATA_DIR + '/audio.wav'
+    subprocess.run(['ffmpeg', '-i', video_path, '-vn', '-acodec', 'pcm_s16le', '-ac', '1', '-ar', '16000', '-y', audio_path])
+    return audio_path
+
+def extract_video_segments(video_path, timestamps):
+    video = VideoFileClip(video_path)
     
-    for key, value in initial_state.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
-
-def validate_video(uploaded_file):
-    """Validate uploaded video file"""
-    if uploaded_file is None:
-        return False
-        
-    # Check file size (e.g., 500MB limit)
-    MAX_SIZE = 500 * 1024 * 1024  # 500MB in bytes
-    if uploaded_file.size > MAX_SIZE:
-        st.error("File size too large. Please upload a video smaller than 500MB.")
-        return False
+    output_path = DATA_DIR + '/new_video.mp4'
     
-    # Check file type
-    allowed_types = ['video/mp4', 'video/mpeg', 'video/avi']
-    if uploaded_file.type not in allowed_types:
-        st.error("Please upload a valid video file (MP4, MPEG, or AVI).")
-        return False
-        
-    return True
+    segments = []
+    
+    for ts in timestamps:
+        start = float(ts['start'].replace(":", "").replace(".", "")) / 1000
+        end = float(ts['end'].replace(":", "").replace(".", "")) / 1000
+        segment = video.subclip(start, end)
+        segments.append(segment)
+    
+    final_video = concatenate_videoclips(segments)
+    
+    final_video.write_videofile(output_path, codec="libx264")
+    
+    video.close()
+    final_video.close()
+    for segment in segments:
+        segment.close()
+    return output_path
 
-def parse_timestamp(timestamp_str):
-    """Safely parse timestamp string to seconds"""
-    try:
-        # Remove brackets and split into components
-        clean_ts = timestamp_str.replace('[', '').replace(']', '').strip()
-        # Parse timestamp in format "HH:MM:SS.mmm"
-        time_obj = datetime.strptime(clean_ts, '%H:%M:%S.%f')
-        return (time_obj.hour * 3600 + 
-                time_obj.minute * 60 + 
-                time_obj.second + 
-                time_obj.microsecond / 1000000)
-    except ValueError as e:
-        logger.error(f"Error parsing timestamp {timestamp_str}: {e}")
-        st.error(f"Invalid timestamp format: {timestamp_str}")
-        return None
 
-def process_transcript(script):
-    """Process transcript and extract timestamps"""
-    new_script_final = []
-    try:
-        for line in script.split('\n'):
-            if not line.strip():
-                continue
-                
-            parts = line.split(':|:')
-            if len(parts) != 2:
-                st.error(f"Invalid line format: {line}")
-                continue
-                
-            timestamp, text = parts
-            start_end = timestamp.split('-')
-            if len(start_end) != 2:
-                st.error(f"Invalid timestamp format: {timestamp}")
-                continue
-                
-            start = parse_timestamp(start_end[0])
-            end = parse_timestamp(start_end[1])
-            
-            if start is None or end is None:
-                continue
-                
-            if end <= start:
-                st.error(f"End time must be after start time: {timestamp}")
-                continue
-                
-            new_script_final.append({
-                'start': start_end[0].strip(),
-                'end': start_end[1].strip(),
-                'text': text.strip()
-            })
-    except Exception as e:
-        logger.error(f"Error processing transcript: {e}")
-        st.error("Error processing transcript. Please check the format.")
-        return None
-        
-    return new_script_final
+def get_cloned_voice(audio_path, ref_text, text):
+    
+    speaker = open(audio_path, "rb")
 
-def main():
-    st.set_page_config(
-        page_title="ScriptCut",
-        page_icon="📝",
-        layout="wide",
+    input = {
+            "gen_text": text,
+            "ref_text": ref_text,
+            "ref_audio": speaker,
+            "speed": 0.8
+            }
+
+
+    prediction = replicate.predictions.create(
+        "87faf6dd7a692dd82043f662e76369cab126a2cf1937e25a9d41e0b834fd230e",
+        input=input
     )
-    
-    init_session_state()
-    
-    # Cleanup old files every hour
-    current_time = datetime.now()
-    if (st.session_state.last_processed_time is None or 
-        (current_time - st.session_state.last_processed_time).total_seconds() > 3600):
-        cleanup_old_files()
-        st.session_state.last_processed_time = current_time
 
-    st.title("ScriptCut")
 
-    with st.sidebar:
-        st.image('sundai_logo.jpg', width=100)
-        st.title("ScriptCut")
-        st.write("Your personal script editor")
-        st.session_state.bloopers = st.checkbox("Bloopers")
+    for i in range(100):
+        prediction.reload()
+        if prediction.status in {"succeeded", "failed", "canceled"}:
+            break
+        time.sleep(2)
 
-    cols = st.columns(2 if st.session_state.bloopers else 3)
 
-    with cols[0]:
-        st.subheader("Upload Video")
-        uploaded_video = st.file_uploader("Upload Video")
+    output_url = prediction.output
+
+    response = requests.get(output_url)
+    if response.status_code == 200:
+        content_type = response.headers.get('content-type')
+        if 'audio' in content_type:
+            extension = '.mp3'
         
-        if uploaded_video is not None and validate_video(uploaded_video):
-            try:
-                st.video(uploaded_video)
-                video_path = save_uploaded_video(uploaded_video)
-                audio_path = extract_audio(video_path)
-                
-                st.session_state.audio_path = audio_path
-                transcript_response = transcribe_audio(audio_path)
-                
-                if transcript_response:
-                    ref_text = ''.join([x['text'] for x in transcript_response])
-                    transcript = [
-                        f"[{x['start']} - {x['end']}] :|: {x['text']}" 
-                        for x in transcript_response
-                    ]
-                    st.session_state.original_script = '\n'.join(transcript)
-                    st.session_state.original_video_path = video_path
-                else:
-                    st.error("Failed to transcribe audio")
-            
-            except Exception as e:
-                logger.error(f"Error processing video: {e}")
-                st.error("Error processing video. Please try again.")
+        filename = f"cloned_voice{extension}"
+        
+        with open(os.path.join(DATA_DIR, filename), 'wb') as f:
+            f.write(response.content)
 
-    with cols[1]:
-        st.subheader("Trim Transcript")
-        script = st.text_area(
-            "Transcript", 
-            st.session_state.original_script, 
-            height=300, 
-            placeholder="Script"
+        return os.path.join(DATA_DIR, filename)
+
+
+
+def modify_and_patch_video(video_path, audio_path, timestamps, ref_text):
+    """
+    Modifies a video by replacing audio in specified segments with cloned voice audio.
+    
+    Args:
+        video_path (str): Path to the input video file
+        audio_path (str): Path to the reference audio file
+        timestamps (list): List of dictionaries containing segment information
+        ref_text (str): Reference text for voice cloning
+    
+    Returns:
+        str: Path to the output synchronized video file
+    """
+    video = VideoFileClip(video_path)
+    output_path = os.path.join(DATA_DIR, 'synced_video.mp4')
+    temp_clips = []  # Store temporary clips
+    
+    try:
+        segments = []
+        current_time = 0  # Keep track of cumulative duration
+        
+        for ts in timestamps:
+            # Convert timestamps to seconds more reliably
+            start = float(ts['start'].replace(":", "").replace(".", "")) / 1000
+            end = float(ts['end'].replace(":", "").replace(".", "")) / 1000
+            duration = end - start
+            
+            # Ensure chronological order and valid durations
+            if start < 0 or end > video.duration or start >= end:
+                raise ValueError(f"Invalid timestamp values: start={start}, end={end}")
+            
+            # Extract video segment
+            video_segment = video.subclip(start, end)
+            
+            if ts.get('sync', False):  # Check if this segment needs audio sync
+                # Generate cloned voice audio
+                cloned_audio_path = get_cloned_voice(audio_path, ref_text, ts['text'])
+                if not cloned_audio_path or not os.path.exists(cloned_audio_path):
+                    raise ValueError(f"Failed to generate cloned audio for segment: {ts}")
+                
+                # Load and verify cloned audio
+                cloned_audio = AudioFileClip(cloned_audio_path)
+                temp_clips.append(cloned_audio)  # Store for cleanup
+                
+                # Adjust audio duration to match video segment if needed
+                if abs(cloned_audio.duration - duration) > 0.1:  # Allow small tolerance
+                    cloned_audio = cloned_audio.set_duration(duration)
+                
+                # Apply the new audio to the video segment
+                video_segment = video_segment.set_audio(cloned_audio)
+            
+            segments.append(video_segment)
+            current_time += duration
+        
+        # Concatenate all segments
+        final_video = concatenate_videoclips(segments, method="compose")
+        
+        # Write the final video with proper codec settings
+        final_video.write_videofile(
+            output_path,
+            codec="libx264",
+            audio_codec="aac",
+            temp_audiofile=os.path.join(DATA_DIR, "temp-audio.m4a"),
+            remove_temp=True,
+            fps=video.fps
         )
         
-        if st.button("Submit"):
-            if script:
-                new_script_final = process_transcript(script)
+        return output_path
+    
+    finally:
+        # Clean up resources
+        video.close()
+        
+        # Clean up all temporary clips
+        for clip in temp_clips:
+            try:
+                clip.close()
+            except Exception:
+                pass
                 
-                if new_script_final:
-                    try:
-                        new_video_path = extract_video_segments(
-                            st.session_state.original_video_path, 
-                            new_script_final
-                        )
-                        
-                        if new_video_path and os.path.exists(new_video_path):
-                            st.video(new_video_path)
-                            st.session_state.new_video_path = new_video_path
-                            st.session_state.new_script = script
-                            
-                            new_audio_path = extract_audio(new_video_path)
-                            transcript_response = transcribe_audio(new_audio_path)
-                            
-                            if transcript_response:
-                                st.session_state.ref_text = ''.join(
-                                    [x['text'] for x in transcript_response]
-                                )
-                                transcript = [
-                                    f"[{x['start']} - {x['end']}] :|: {x['text']}" 
-                                    for x in transcript_response
-                                ]
-                                st.session_state.new_transcript = '\n'.join(transcript)
-                            else:
-                                st.error("Failed to transcribe new audio")
-                        else:
-                            st.error("Failed to create new video")
-                            
-                    except Exception as e:
-                        logger.error(f"Error processing transcript: {e}")
-                        st.error("Error processing transcript. Please try again.")
-
-    if not st.session_state.bloopers and len(cols) > 2:
-        with cols[2]:
-            st.subheader("Edit Transcript")
-            new_transcript = st.text_area(
-                "Transcript",
-                st.session_state.new_transcript if 'new_transcript' in st.session_state else '',
-                height=300
-            )
-            
-            if st.button("Process"):
-                if new_transcript:
-                    try:
-                        to_be_synced_time_stamps = []
-                        old_lines = st.session_state.new_transcript.split('\n')
-                        new_lines = new_transcript.split('\n')
-                        
-                        if len(old_lines) != len(new_lines):
-                            st.error("Number of lines must match original transcript")
-                            return
-                            
-                        for old_line, new_line in zip(old_lines, new_lines):
-                            timestamp_parts = new_line.split(':|:')
-                            if len(timestamp_parts) != 2:
-                                st.error(f"Invalid line format: {new_line}")
-                                continue
-                                
-                            timestamp, text = timestamp_parts
-                            start_end = timestamp.split('-')
-                            if len(start_end) != 2:
-                                st.error(f"Invalid timestamp format: {timestamp}")
-                                continue
-                                
-                            to_be_synced_time_stamps.append({
-                                'start': start_end[0].replace('[', '').strip(),
-                                'end': start_end[1].replace(']', '').strip(),
-                                'text': text.strip(),
-                                'sync': old_line != new_line
-                            })
-                        
-                        synced_video_path = modify_and_patch_video(
-                            st.session_state.new_video_path,
-                            st.session_state.audio_path,
-                            to_be_synced_time_stamps,
-                            st.session_state.ref_text
-                        )
-                        
-                        if synced_video_path and os.path.exists(synced_video_path):
-                            st.video(synced_video_path)
-                        else:
-                            st.error("Failed to create synced video")
-                            
-                    except Exception as e:
-                        logger.error(f"Error processing edited transcript: {e}")
-                        st.error("Error processing edited transcript. Please try again.")
-
-if __name__ == "__main__":
-    main()
+        # Clean up segments
+        for segment in segments:
+            try:
+                segment.close()
+            except Exception:
+                pass
