@@ -1,6 +1,6 @@
 python-multipart
 replicate
-openai
+openai==1.35.7
 streamlit
 moviepy
 
