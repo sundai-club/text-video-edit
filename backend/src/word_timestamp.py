@@ -3,10 +3,10 @@ from datetime import timedelta
 import subprocess
 import moviepy.editor as mp
 from openai import OpenAI
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 
 # Load environment variables from .env file
-load_dotenv()
+# load_dotenv()
 
 # Initialize the OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
