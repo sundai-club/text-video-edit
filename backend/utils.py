@@ -37,7 +37,7 @@ def extract_video_segments(video_path, timestamps):
     
     final_video = concatenate_videoclips(segments)
     
-    final_video.write_videofile(output_path, codec="libx264")
+    final_video.write_videofile(output_path, codec="libx264", audio=True)
     
     video.close()
     final_video.close()
@@ -113,7 +113,7 @@ def modify_and_patch_video(video_path, audio_path, timestamps, ref_text):
     
     final_video = concatenate_videoclips(segments)
     
-    final_video.write_videofile(output_path, codec="libx264")
+    final_video.write_videofile(output_path, codec="libx264", audio=True)
     
     video.close()
     final_video.close()

@@ -88,7 +88,7 @@ with cols[1]:
             new_script_final = new_time_stamps
 
         new_video_path = extract_video_segments(st.session_state.original_video_path, new_script_final)
-        st.video(new_video_path, format="video/mp4")
+        st.video(new_video_path, format="video/mp4") 
         
         if 'new_video_path' not in st.session_state:
             st.session_state.new_video_path = new_video_path
