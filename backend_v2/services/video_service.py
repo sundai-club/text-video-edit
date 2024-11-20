@@ -12,7 +12,7 @@ class VideoService:
         os.makedirs(self.data_dir, exist_ok=True)
 
     async def save_video(self, file: UploadFile) -> str:
-        video_path = os.path.join(self.data_dir, "uploaded_video.mp4")
+        video_path = os.path.join(self.data_dir, f"uploaded_video.mp4")
         with open(video_path, "wb") as buffer:
             content = await file.read()
             buffer.write(content)
@@ -45,13 +45,13 @@ class VideoService:
         with VideoFileClip(video_path) as video:
             segments = []
             for ts in timestamps:
-                start = float(ts.start.replace(":", "").replace(".", "")) / 1000
-                end = float(ts.end.replace(":", "").replace(".", "")) / 1000
+                start = float(ts['start'].replace(":", "").replace(".", "")) / 1000
+                end = float(ts['end'].replace(":", "").replace(".", "")) / 1000
                 
-                if ts.sync:
+                if ts['sync']:
                     segment = video.subclip(start, end)
                     cloned_audio = self.audio_service.get_cloned_voice(
-                        audio_path, ref_text, ts.text
+                        audio_path, ref_text, ts['text']
                     )
                     segment = segment.set_audio(cloned_audio)
                 else:

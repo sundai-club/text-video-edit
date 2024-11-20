@@ -24,36 +24,58 @@ class TimeStamp(BaseModel):
 @app.post("/upload-video/")
 async def upload_video(file: UploadFile = File(...)):
     video_path = await video_service.save_video(file)
-    audio_path = audio_service.extract_audio(video_path)
+    audio_path = audio_service.extract_audio(video_path, 'original_audio.wav')
     transcript = transcription_service.transcribe_audio(audio_path)
+    with open('data/original_reference_text.txt', 'w') as f:
+        f.write(''.join([t['text'] for t in transcript]))
     
     return {
-        "video_path": video_path,
-        "audio_path": audio_path,
         "transcript": transcript
     }
 
 @app.post("/process-video/")
 async def process_video(request: dict):
-    video_path = request["video_path"]
+    video_path = 'data/uploaded_video.mp4'
     timestamps = request["timestamps"]
     logging.info(f"Video path: {video_path}")
     new_video_path = video_service.extract_segments(video_path, timestamps)
     processed_video = FileResponse(new_video_path, media_type="video/mp4", filename="modified_video.mp4")
-    return {"processed_video": processed_video, "new_video_path": new_video_path}
+    return processed_video
+
+def get_to_synced_timestamps(new_transcript, new_new_script):
+    to_be_synced_time_stamps = []
+    for old_line, new_line in zip(new_transcript.split('\n'), new_new_script.split('\n')):
+        timestamp_list = new_line.split(':|:')
+        timestamp = timestamp_list[0]
+        text = timestamp_list[1]
+        start = timestamp.split('-')[0].replace('[', '').strip()
+        end = timestamp.split('-')[1].replace(']', '').strip()
+
+        if old_line != new_line:
+            to_be_synced_time_stamps.append({'start': start, 'end': end, 'text': text, 'sync': True})
+        else:
+            to_be_synced_time_stamps.append({'start': start, 'end': end, 'text': text, 'sync': False})
+    
+    return to_be_synced_time_stamps
 
 
 @app.post("/modify-video/")
-async def modify_video(
-    video_path: str,
-    audio_path: str,
-    timestamps: List[TimeStamp],
-    ref_text: str):
+async def modify_video(request: dict):
+    new_new_transcript = request["to_lip_sync_transcript"]
+    print(new_new_transcript)
+    new_audio_path = audio_service.extract_audio('data/new_video.mp4', 'new_audio.wav')
+    new_transcript = transcription_service.transcribe_audio(new_audio_path)
+    new_transcript = ['[' + x['start'] + ' - ' + x['end'] +']'+ ' :|: ' +  x['text'] for x in new_transcript]
+    new_transcript = '\n'.join(new_transcript)
+
+    reference_text = open('data/original_reference_text.txt', 'r').read().strip()
+    original_audio_path = 'data/original_audio.wav'
+    to_be_synced_time_stamps = get_to_synced_timestamps(new_transcript, new_new_transcript)
     synced_video_path = video_service.modify_and_patch(
-        video_path,
-        audio_path,
-        timestamps,
-        ref_text
+        'data/new_video.mp4',
+        original_audio_path,
+        to_be_synced_time_stamps,
+        reference_text
     )
     modified_video = FileResponse(synced_video_path, media_type="video/mp4", filename="modified_video.mp4")
     return modified_video

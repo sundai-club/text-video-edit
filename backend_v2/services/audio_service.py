@@ -12,8 +12,8 @@ class AudioService:
         self.data_dir = "data"
         os.makedirs(self.data_dir, exist_ok=True)
 
-    def extract_audio(self, video_path: str) -> str:
-        audio_path = os.path.join(self.data_dir, "audio.wav")
+    def extract_audio(self, video_path: str, audio_path: str) -> str:
+        audio_path = os.path.join(self.data_dir, audio_path)
         subprocess.run([
             'ffmpeg', '-i', video_path,
             '-vn',
